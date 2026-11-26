@@ -1,0 +1,10 @@
+# Gerado por discover.py em 2026-11-26
+teams:
+  - key: gremio
+    display: Gremio
+    fdorg_id: 1767
+    apifootball_id: null
+  - key: corinthians
+    display: Corinthians
+    fdorg_id: 1779
+    apifootball_id: null

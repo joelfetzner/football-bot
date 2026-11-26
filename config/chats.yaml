@@ -1,0 +1,15 @@
+# Destinos de publicacao no Telegram (Fase 1). ESQUELETO - sem IDs reais.
+# Os valores abaixo sao placeholders e nao devem ser usados tal como estao.
+# Se meter IDs reais, mantenha este ficheiro local e nao o commite.
+chats:
+  # conversa privada do dono do bot
+  - key: privado
+    chat_id: 000000000        # placeholder: id numerico da conversa privada
+    content: results          # results | results_and_scorers | summary
+    silent: false             # true = entrega sem notificacao sonora
+
+  # grupo de amigos
+  - key: grupo
+    chat_id: -1000000000000   # placeholder: id de grupo/supergrupo (negativo)
+    content: results
+    silent: false

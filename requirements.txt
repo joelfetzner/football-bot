@@ -1,0 +1,2 @@
+# So necessario para ler/escrever config/*.yaml; o discover.py funciona sem isto
+PyYAML>=6.0
