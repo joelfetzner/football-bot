@@ -54,6 +54,13 @@ jobs:
           FOOTBALL_DATA_TOKEN: ${{ secrets.FOOTBALL_DATA_TOKEN }}
         run: python app.py sync --days-back 0 --days-forward 7
 
+      # Rede de seguranca: entrega qualquer jogo que tenha ficado pendente
+      # (run do check falhou, cron atrasou, jogo terminou fora do gate).
+      - name: Entregar pendencias
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: python app.py deliver --limit 10
+
       - name: Commit data/football.db apenas se mudou
         run: |
           if git diff --quiet -- data/football.db; then

@@ -1,13 +1,13 @@
 name: check
 
-# Janela de jogos em UTC: 21:00-05:59 (fim de tarde/noite no Brasil).
-# O gate local (kickoff + margem + grace) decide se vale a pena pedir a API,
-# por isso o cron pode ser de 5 em 5 minutos dentro desta janela.
-# Repo publico: Actions gratis, e o check nao escreve na DB quando nao ha nada
-# na janela (sem commits vazios de 5 em 5 minutos).
+# Checagem 24h, de 5 em 5 minutos. O gate local (kickoff + margem + grace)
+# decide se vale a pena pedir a API, por isso a maioria dos runs sai em segundos
+# sem rede. Repo publico: Actions gratis e sem commit quando nao ha nada novo.
+# A janela fixa (21-05 UTC) foi removida porque jogos de manha (ex. 11h BRT) e
+# competisoes europeias ficavam fora dela.
 on:
   schedule:
-    - cron: "*/5 21-23,0-5 * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 permissions:
