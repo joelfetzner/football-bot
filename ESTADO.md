@@ -328,8 +328,8 @@ requirements.txt        PyYAML>=6.0 (só config)
   chave (`APIFOOTBALL_KEY` ausente).
 - **Nao ha sinal de vida.** Ausencia de mensagem nao distingue "sem jogo" de
   "quebrado"; o unico aviso e o e-mail de workflow falhado do GitHub.
-- **`backup-pre-rewrite` / `backup-v0.5.0`** existem so localmente e guardam o
-  historico anterior a limpeza de e-mail/ids. Apagar quando nao forem mais
-  necessarios:
-  `git branch -D backup-pre-rewrite` e `git tag -d backup-v0.5.0`.
-  Purga completa: `git reflog expire --expire=now --all` + `git gc --prune=now`.
+- **Histórico limpo e purgado em 2026-11-27.** O backup local
+  (`backup-pre-rewrite`, `backup-v0.5.0`) e a ref `refs/original/` do
+  `filter-branch` foram removidos; os objetos antigos foram apagados com
+  `reflog expire --expire=now --all` + `gc --prune=now`. No remoto existem
+  apenas os commits reescritos e a tag `v0.5.0`.
