@@ -147,7 +147,8 @@ Fase 5  app.py check + .github/workflows -> Actions (gate local + cron 5 min)
 - **Fase 5 executada a 2026-11-27.** Repositório público
   `github.com/joelfetzner/football-bot`, branch `main`, tag `v0.5.0`.
   Actions gratuitas e ilimitadas (repo público); budgets do GitHub em $0.
-  - `sync.yml` (05:13 UTC): calendário de hoje..+7 dias, 1 pedido.
+  - `sync.yml` (05:13 UTC): calendário de hoje..+7 dias, 1 pedido, e entrega
+    pendências ao fim (rede de segurança se um `check` falhar).
   - `check.yml` (`*/5 * * * *`): gate local, rede só se houver jogo.
   - `test-send.yml` (manual): `only`, `limit`, `dry_run`; não commita o banco.
   - `data/football.db` só é commitado quando muda (mtime/SHA verificados).
@@ -318,3 +319,17 @@ requirements.txt        PyYAML>=6.0 (só config)
 - Cron do GitHub atrasa 5-15 min sob carga; a entrega e "apos o apito", nao
   "ao vivo".
 - Mensagem por jogo nao tem botao: o canal e somente leitura.
+- **Workflow agendado desliga sozinho apos 60 dias sem atividade no repo
+  publico.** No recesso (jan-abr) nao ha jogo de BSA/CLI e o `sync` nao
+  commita nada, entao o cron pode ser desativado sem aviso. Reativar em
+  GitHub > Actions, ou criar um commit mensal de keepalive.
+- **Fornecedor unico** (football-data.org). Se a API mudar de plano ou o token
+  expirar, o canal fica mudo. `api-football` esta previsto no codigo, mas sem
+  chave (`APIFOOTBALL_KEY` ausente).
+- **Nao ha sinal de vida.** Ausencia de mensagem nao distingue "sem jogo" de
+  "quebrado"; o unico aviso e o e-mail de workflow falhado do GitHub.
+- **`backup-pre-rewrite` / `backup-v0.5.0`** existem so localmente e guardam o
+  historico anterior a limpeza de e-mail/ids. Apagar quando nao forem mais
+  necessarios:
+  `git branch -D backup-pre-rewrite` e `git tag -d backup-v0.5.0`.
+  Purga completa: `git reflog expire --expire=now --all` + `git gc --prune=now`.
