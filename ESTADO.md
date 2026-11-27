@@ -141,7 +141,7 @@ Fase 5  app.py check + .github/workflows -> Actions (gate local + cron 5 min)
 - `python app.py due --limit 5` -> `[ok] 3 mensagens devidas` (modo dry-run,
   tabela `sent` continua vazia).
 - **Fase 4 executada a 2026-11-27.** Bot `@fut_results_bot`; destinos em
-  `config/chats.yaml` (`canal` = `-1000000000000`, `privado` = `123456789`),
+  `config/chats.yaml` (IDs reais fora do repo; ver secrets do Actions),
   ambos já com uma mensagem de teste entregue.
 - `python app.py deliver --dry-run` -> 6 pendentes (3 jogos x 2 chats), sem
   rede e sem escrever em `sent`.

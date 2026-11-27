@@ -1,4 +1,4 @@
-"""Testes da Fase 4 - cliente Telegram e config de chats, sem rede."""
+﻿"""Testes da Fase 4 - cliente Telegram e config de chats, sem rede."""
 
 from __future__ import annotations
 

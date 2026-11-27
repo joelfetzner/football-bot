@@ -1,4 +1,4 @@
-"""Testes da Fase 1+2 (sem rede, DB temporaria em tmp_path)."""
+﻿"""Testes da Fase 1+2 (sem rede, DB temporaria em tmp_path)."""
 
 from __future__ import annotations
 

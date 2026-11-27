@@ -71,7 +71,7 @@ O ficheiro real tem IDs de conversas e por isso esta **no `.gitignore`**.
 ```yaml
 chats:
   - key: privado
-    chat_id: "123456789"    # string, mesmo para IDs negativos de canal
+    chat_id: "123456789"     # string, mesmo para IDs negativos de canal
     kind: private            # channel | group | private
     content: results         # reservado; a Fase 4 entrega results
     silent: false            # true = sem notificacao sonora
