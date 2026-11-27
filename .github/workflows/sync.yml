@@ -1,0 +1,68 @@
+name: sync
+
+# Uma sincronizacao diaria (06:13 UTC = 03:13 no Brasil) para manter o banco
+# atualizado mesmo sem jogos na janela do check. 0+7 dias cabe num unico
+# pedido (limite do free tier: 10 dias por pedido).
+on:
+  schedule:
+    - cron: "13 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: football-state
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Gerar config/chats.yaml a partir dos secrets
+        env:
+          TELEGRAM_CHAT_CANAL: ${{ secrets.TELEGRAM_CHAT_CANAL }}
+          TELEGRAM_CHAT_PRIVADO: ${{ secrets.TELEGRAM_CHAT_PRIVADO }}
+        run: |
+          [ -n "$TELEGRAM_CHAT_CANAL" ] || { echo "secret ausente"; exit 1; }
+          mkdir -p config
+          {
+            echo "chats:"
+            echo "  - key: canal"
+            echo "    chat_id: \"${TELEGRAM_CHAT_CANAL}\""
+            echo "    kind: channel"
+            echo "    content: results"
+            echo "    silent: false"
+            if [ -n "${TELEGRAM_CHAT_PRIVADO}" ]; then
+              echo "  - key: privado"
+              echo "    chat_id: \"${TELEGRAM_CHAT_PRIVADO}\""
+              echo "    kind: private"
+              echo "    content: results"
+              echo "    silent: false"
+            fi
+          } > config/chats.yaml
+
+      - name: Sync (0 dias para tras, 7 para a frente)
+        env:
+          FOOTBALL_DATA_TOKEN: ${{ secrets.FOOTBALL_DATA_TOKEN }}
+        run: python app.py sync --days-back 0 --days-forward 7
+
+      - name: Commit data/football.db apenas se mudou
+        run: |
+          if git diff --quiet -- data/football.db; then
+            echo "data/football.db sem alteracoes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/football.db
+          git commit -m "chore: estado $(date -u +%Y-%m-%dT%H:%MZ)"
+          git pull --rebase --autostash
+          git push

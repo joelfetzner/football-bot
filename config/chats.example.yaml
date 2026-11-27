@@ -1,0 +1,17 @@
+# Modelo publico de config/chats.yaml. Copie para chats.yaml e preencha.
+# chat_id de canal/grupo: negativo, comeca por -100. Conversa privada: numerico positivo.
+# kind: channel | group | private
+# content: results | results_and_scorers | summary
+# silent: true = entrega sem notificacao sonora
+chats:
+  - key: canal
+    chat_id: "-1000000000000"
+    kind: channel
+    content: results
+    silent: false
+
+  - key: privado
+    chat_id: "0000000000"
+    kind: private
+    content: results
+    silent: false

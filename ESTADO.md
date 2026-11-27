@@ -2,7 +2,7 @@
 
 > Documento de transferência. Escrito para sobreviver a uma pausa: se o projeto
 > ficar parado semanas, é por aqui que se recomeça.
-> Última atualização: 2026-11-26.
+> Última atualização: 2026-11-27.
 
 ---
 
@@ -14,11 +14,22 @@ futebol obtidos por API.
 
 A **Fase 0** não publica nada: descobre os IDs de equipa e mede a cobertura de
 competições em dois fornecedores, para decidir com dados qual usar na Fase 1.
+As **Fases 1 e 2** (feitas em 2026-11-26) trazem os jogos para SQLite, filtram
+Gremio/Corinthians, deduplicam entregas por `(fixture_id, chat_id)` e renderizam
+a mensagem em modo *dry-run*. A **Fase 4** (feita em 2026-11-27) liga essa fila
+aos destinos de `config/chats.yaml` pela Bot API, gravando `sent` só depois de
+um envio com sucesso. A **Fase 5** (feita em 2026-11-27) põe o ciclo a correr
+no GitHub Actions: um gate local sem rede decide quando chamar a API, o cron
+corre de 5 em 5 minutos apenas na janela de jogos e o `data/football.db` só é
+commitado quando muda.
 
 ```
 Fase 0  discover.py -> IDs + docs/coverage.md + config/teams.yaml
-Fase 1  leitura periódica -> deteção de jogos novos -> envio Telegram
-Fase 2  agendamento (GitHub Actions ou tarefa local), estado persistido
+Fase 1  app.py sync -> data/football.db (upsert, nunca apaga)
+        app.py due  -> mensagens de jogos finalizados por entregar
+Fase 2  app.py mark-sent -> tabela sent (dedupe fixture_id + chat_id)
+Fase 4  telegram.py + app.py deliver -> Bot API -> sent (message_id)
+Fase 5  app.py check + .github/workflows -> Actions (gate local + cron 5 min)
 ```
 
 ## 2. Requisitos
@@ -66,8 +77,52 @@ Fase 2  agendamento (GitHub Actions ou tarefa local), estado persistido
   leitura de `teams.yaml` usa PyYAML (com aviso se faltar).
 - **Códigos de saída.** `0` sucesso (mesmo com falhas parciais), `1` todos os
   fornecedores falharam, `2` nenhuma chave disponível.
+- **Uma mensagem por jogo, logo que termina (Fase 1+2).** Nada de resumo
+  diário: `due` devolve os finalizados ainda não entregues, por ordem de
+  `utc_date`.
+- **Dedupe `(fixture_id, chat_id)`.** `sent` tem chave primária composta;
+  `mark-sent` usa `INSERT OR IGNORE` e é idempotente. `due` nunca escreve em
+  `sent`: sem `--chat` usa o literal `dry-run` (modo de ensaio).
+- **Âmbito BSA + CLI.** Um único pedido `/v4/matches` com
+  `competitions=BSA,CLI`, filtrado localmente pelos `fdorg_id` da config
+  (Gremio 1767, Corinthians 1779).
+- **Upsert conservador.** `goals_*`/`penalties_*` ficam NULL quando a API os
+  omite; o `ON CONFLICT` usa `COALESCE(excluded.x, matches.x)` para nunca
+  apagar um placar já conhecido. Nenhuma linha é apagada.
+- **Janela de 10 dias por pedido.** O free tier responde
+  `400 Specified period must not exceed 10 days`; `sync` divide a janela
+  (default 10 para trás + 7 para a frente = 2 pedidos, espaçados pelo
+  `RateLimiter` de 6.5 s).
+- **Mensagem em texto simples, ASCII.** `render_match()` é puro (sem I/O);
+  `parse_mode` fica para a Fase 3. Nomes dos nossos clubes vêm do `display` da
+  config; adversários vêm da API com acentos dobrados.
+- **Horário local `Europe/Luxembourg`** via `zoneinfo`, formato
+  `dd/mm HH:MM`. Coluna `venue` é uma extensão nullable ao esquema pedido (a
+  linha `Estadio:` só aparece quando existe).
+- **Telegram em stdlib (`telegram.py`).** `send_message` faz `POST` JSON em
+  `/bot<token>/sendMessage` com `chat_id` string, `disable_web_page_preview:
+  true` e `disable_notification: silent`. `transport(method, payload) -> dict`
+  é injectável: os testes correm sem rede.
+- **429 com uma única repetição.** Lê `parameters.retry_after`, dorme esse
+  valor (sleeper injectável) e repete uma vez; um segundo 429 sobe como
+  `TelegramError`. `403`/`400` sobem com `error_code` + `description`, sem
+  traceback.
+- **Token nunca aparece em erros.** `TELEGRAM_BOT_TOKEN` vem do `.env`; as
+  mensagens de excepção passam por redacção (`***`) e o transporte nunca inclui
+  a URL com token.
+- **`config/chats.yaml` é gitignored.** Tem IDs reais; o modelo público é
+  `config/chats.example.yaml`. `load_chats` recusa `kind` fora de
+  `channel/group/private`, `chat_id` vazio e IDs placeholder (só zeros), para
+  ninguém publicar o exemplo por engano.
+- **`deliver` grava `sent` só após sucesso.** Reutiliza `due_matches` (mesma
+  query de dedupe), do mais antigo para o mais recente, com `--limit` por chat.
+  Um destino que falha imprime `[erro]` e não interrompe os restantes. Entre
+  dois envios ao mesmo chat espera 1 s (limite por chat do Telegram).
+  `--dry-run` não toca na rede nem escreve em `sent`.
+- **Código de saída do `deliver`.** `1` só quando houve falha e nenhuma entrega;
+  caso contrário `0` (falha parcial continua a ser execução útil).
 
-## 4. Estado atual (2026-11-26)
+## 4. Estado atual (2026-11-27)
 
 - Fase 0 **executada com o token real** (football-data.org free) em 2026-11-26.
 - `Gremio` -> **1767** (Grêmio FBPA, roster `BSA`).
@@ -76,7 +131,29 @@ Fase 2  agendamento (GitHub Actions ou tarefa local), estado persistido
   `apifootball_id` continua `null` (`APIFOOTBALL_KEY` ausente).
 - `docs/coverage.md` lista 8 jogos por clube, todos no Campeonato Brasileiro
   Série A; nenhum jogo de Copa Libertadores na janela de 60 dias.
-- `python -m pytest tests -q` -> **46 passed**, zero rede.
+- **Fase 1+2 executada com o token real** em 2026-11-26:
+  `python app.py sync --days-back 10 --days-forward 7` ->
+  `[ok] sync: 4 jogos (3 finalizados, 1 agendados)`; segunda execução manteve
+  4 linhas (sem duplicados).
+- `data/football.db` contém a ronda 35 (Corinthians 4-0 Botafogo,
+  Gremio 0-0 Bahia), a ronda 36 (Santos 0-2 Gremio) e o
+  **Corinthians x Gremio de 29/11 21:30 UTC (ronda 37, status TIMED)**.
+- `python app.py due --limit 5` -> `[ok] 3 mensagens devidas` (modo dry-run,
+  tabela `sent` continua vazia).
+- **Fase 4 executada a 2026-11-27.** Bot `@fut_results_bot`; destinos em
+  `config/chats.yaml` (`canal` = `-1000000000000`, `privado` = `123456789`),
+  ambos já com uma mensagem de teste entregue.
+- `python app.py deliver --dry-run` -> 6 pendentes (3 jogos x 2 chats), sem
+  rede e sem escrever em `sent`.
+- `python app.py deliver --only privado --limit 1` ->
+  `[ok] privado 555080 Corinthians x Botafogo FR -> message_id=8`.
+  Uma segunda execução com os mesmos argumentos entregou o próximo da fila
+  (`555084 Gremio x EC Bahia -> message_id=9`), porque ainda havia 3 jogos
+  devidos e `--limit 1` limita por execução, não por jogo. O `555080` não foi
+  repetido (dedupe confirmado). O `555099` continua pendente em `privado`.
+- `canal` continua **sem entregas** de resultados: reservado para o
+  Corinthians x Gremio de 29/11.
+- `python -m pytest tests -q` -> **99 passed**, zero rede.
 - Git inicializado (`main`), sem commit e sem identidade configurada.
 
 ## 5. Bloqueios
@@ -86,26 +163,36 @@ Fase 2  agendamento (GitHub Actions ou tarefa local), estado persistido
 - Cobertura confirmada no free tier: **13 competições**, com `BSA` e `CLI`.
   **Copa do Brasil e campeonatos estaduais não existem** nesse plano.
 
-## 6. Próximo passo (Fase 1)
+## 6. Próximo passo (Fase 5)
 
-1. Rever `docs/coverage.md` já gerado e decidir fornecedor principal e aliases
-   de competição; repetir `discover.py` só quando a janela mudar.
-2. Fixar o esquema de estado (últimos jogos vistos por clube) — ficheiro JSON
-   ou SQLite, idempotente.
-3. Implementar o cliente Telegram (sendMessage, sem preview) e o
-   `config/chats.yaml` real (privado + grupo, `content`, `silent`).
-4. Definir agendamento e orçamento de chamadas dentro do tier gratuito.
+1. Agendamento (GitHub Actions ou tarefa local): `sync` seguido de
+   `deliver`, por exemplo a cada 15-30 min, com `TELEGRAM_BOT_TOKEN` como
+   segredo do runner. O `sync` gasta 2 pedidos por execução com a janela
+   default.
+2. Rotina dedicada ao dia de jogo: o Corinthians x Gremio de 29/11 21:30 UTC
+   entra em `due` quando o `sync` o vir `FINISHED`; o `canal` recebe então a
+   primeira entrega real.
+3. `parse_mode`/`content: results_and_scorers` só se forem precisos marcadores
+   ou golos; a Fase 4 entrega texto simples ASCII.
+4. Rever `docs/coverage.md` e aliases de competição quando a janela mudar.
 
 ## 7. Arquivos relevantes
 
 ```
 discover.py             CLI Fase 0 (argparse, urllib, parsers, cobertura)
+app.py                  CLI Fase 1+2 (sync, due, mark-sent; SQLite)
+render.py               render_match(): texto ASCII, Europe/Luxembourg
+telegram.py             load_chats + send_message (Bot API, transport injectável)
+data/football.db        matches + sent (portátil, sem caminhos absolutos)
 config/teams.yaml       key, display, fdorg_id, apifootball_id
-config/chats.yaml       esqueleto de destinos Telegram (Fase 1)
+config/chats.yaml       destinos reais (gitignored)
+config/chats.example.yaml  modelo público de chats.yaml
 .env.example            nomes das chaves + onde obter + limites
 docs/coverage.md        relatório por fornecedor, roster e checklist manual
 tests/conftest.py       põe a raiz no sys.path
-tests/test_discover.py  46 testes, sem rede
+tests/test_discover.py  46 testes da Fase 0, sem rede
+tests/test_app.py       40 testes das Fases 1+2+4, sem rede
+tests/test_telegram.py  13 testes do cliente Telegram, sem rede
 README.md               uso e limitações
 requirements.txt        PyYAML>=6.0 (só config)
 ```
@@ -126,4 +213,64 @@ requirements.txt        PyYAML>=6.0 (só config)
   (`BSA, ELC, PL, CL, EC, FL1, BL1, SA, DED, PPL, CLI, PD, WC`), 10 pedidos/min.
   A pesquisa global `/v4/teams?name=` é instável neste plano: resolver equipas
   pelos rosters de `BSA`/`CLI`.
-- Actualizar este documento sempre que a Fase 1 começar.
+- **Janela da API.** Cada pedido `/v4/matches` aceita no máximo 10 dias
+  (`400 Specified period must not exceed 10 days`); a janela default do `sync`
+  (10 para trás + 7 para a frente) gasta 2 pedidos.
+- Actualizar este documento sempre que uma fase fechar.
+
+## 9. Fase 5 - GitHub Actions (2026-11-27)
+
+### Feito
+
+- **`python app.py check [--limit N] [--dry-run]`.** Gate local sem rede:
+  lê os jogos com `utc_date` em `[agora - 8 h, agora + 30 min]` numa conexão
+  SQLite `mode=ro` (o ficheiro nem pode ser tocado); um jogo é "checkable"
+  quando `status` não é `FINISHED`/`AWARDED` e `agora >= kickoff + margem +
+  grace` (margem 120 min em `BSA`, 165 min em `CLI`, grace 15 min).
+  - Nada checkable: imprime
+    `[ok] check: nada na janela (N jogos futuros no banco)`, sai 0, sem rede e
+    sem escrever na DB (o CI não cria commits vazios).
+  - Algo checkable: `sync` de 3 dias (ontem..amanhã, **1 pedido**), a mesma
+    entrega do `deliver` (todos os chats, com dedupe) e o resumo
+    `[ok] check: X entregues, Y falhas, Z jogos atualizados`.
+  - Saída `0` quando nada falhou; `1` quando houve falha de envio e nenhuma
+    entrega; `2` quando falta uma chave.
+- **`sync` não escreve quando nada mudou.** O upsert compara a linha existente
+  com a nova; se todas as colunas forem iguais o `UPDATE` é saltado e o
+  ficheiro da DB fica byte-idêntico. `updated_at` só avança quando muda
+  `status`, golos, penalties ou `venue`. `sync` imprime agora
+  `[ok] sync: N jogos (X finalizados, Y agendados, Z alterados)`.
+- **Workflows** em `.github/workflows/`:
+  - `check.yml`: cron `*/5 21-23,0-5 * * *` (UTC) + `workflow_dispatch`,
+    `contents: write`, concorrência `football-state` sem cancelamento,
+    `timeout-minutes: 5`; gera `config/chats.yaml` a partir dos secrets e
+    commita `data/football.db` apenas se `git diff --quiet` falhar.
+  - `sync.yml`: cron `13 5 * * *`, `python app.py sync --days-back 0
+    --days-forward 7` (1 pedido), mesmo commit condicional.
+  - `test-send.yml`: manual (`only` canal/privado/all, `limit`, `dry_run`),
+    **não** commita a DB (estado de teste tem de ser revisto).
+- `tests/test_app.py`: +13 testes (gate BSA/CLI, janela, `--margin-min`,
+  caminho sem nada checkable sem rede/escrita, caminho checkable sync+entrega,
+  códigos de saída, sync no-op byte-idêntico, `updated_at` material).
+  Total: **112 passed**, zero rede.
+
+### Decisões
+
+- Repositório **público**: minutos de Actions grátis, por isso o cron pode ser
+  de 5 em 5 minutos dentro da janela de jogos.
+- **Gate kickoff + margem + grace** em vez de sondar a API a cada 5 minutos:
+  poupa quota do free tier (10 pedidos/min) e evita resultados provisórios.
+- **DB commitada só quando muda**: o passo de commit compara
+  `git diff --quiet -- data/football.db`; um `check` sem jogos não produz
+  commit nenhum.
+- `config/chats.yaml` continua gitignored e é **gerado no runner** a partir de
+  `TELEGRAM_CHAT_CANAL`/`TELEGRAM_CHAT_PRIVADO`; nunca vai para o repo.
+
+### Próximo passo
+
+- 29/11: Corinthians x Grêmio (21:30 UTC). O primeiro `check` com o gate
+  passado (~23:45 UTC) faz o `sync`, vê o jogo `FINISHED` e entrega a primeira
+  mensagem real no `canal`; o `privado` segue a mesma fila.
+- Confirmar no Actions que o commit automático da DB aparece uma única vez por
+  alteração e que os runs "nada na janela" terminam verdes sem commit.
+- Só depois disso considerar `parse_mode`/`content: results_and_scorers`.

@@ -1,0 +1,71 @@
+name: check
+
+# Janela de jogos em UTC: 21:00-05:59 (fim de tarde/noite no Brasil).
+# O gate local (kickoff + margem + grace) decide se vale a pena pedir a API,
+# por isso o cron pode ser de 5 em 5 minutos dentro desta janela.
+# Repo publico: Actions gratis, e o check nao escreve na DB quando nao ha nada
+# na janela (sem commits vazios de 5 em 5 minutos).
+on:
+  schedule:
+    - cron: "*/5 21-23,0-5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: football-state
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Gerar config/chats.yaml a partir dos secrets
+        env:
+          TELEGRAM_CHAT_CANAL: ${{ secrets.TELEGRAM_CHAT_CANAL }}
+          TELEGRAM_CHAT_PRIVADO: ${{ secrets.TELEGRAM_CHAT_PRIVADO }}
+        run: |
+          [ -n "$TELEGRAM_CHAT_CANAL" ] || { echo "secret ausente"; exit 1; }
+          mkdir -p config
+          {
+            echo "chats:"
+            echo "  - key: canal"
+            echo "    chat_id: \"${TELEGRAM_CHAT_CANAL}\""
+            echo "    kind: channel"
+            echo "    content: results"
+            echo "    silent: false"
+            if [ -n "${TELEGRAM_CHAT_PRIVADO}" ]; then
+              echo "  - key: privado"
+              echo "    chat_id: \"${TELEGRAM_CHAT_PRIVADO}\""
+              echo "    kind: private"
+              echo "    content: results"
+              echo "    silent: false"
+            fi
+          } > config/chats.yaml
+
+      - name: Check (gate local + sync de 3 dias + entrega)
+        env:
+          FOOTBALL_DATA_TOKEN: ${{ secrets.FOOTBALL_DATA_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: python app.py check
+
+      - name: Commit data/football.db apenas se mudou
+        run: |
+          if git diff --quiet -- data/football.db; then
+            echo "data/football.db sem alteracoes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/football.db
+          git commit -m "chore: estado $(date -u +%Y-%m-%dT%H:%MZ)"
+          git pull --rebase --autostash
+          git push
