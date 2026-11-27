@@ -141,20 +141,22 @@ Fase 5  app.py check + .github/workflows -> Actions (gate local + cron 5 min)
 - `python app.py due --limit 5` -> `[ok] 3 mensagens devidas` (modo dry-run,
   tabela `sent` continua vazia).
 - **Fase 4 executada a 2026-11-27.** Bot `@fut_results_bot`; destinos em
-  `config/chats.yaml` (IDs reais fora do repo; ver secrets do Actions),
-  ambos já com uma mensagem de teste entregue.
-- `python app.py deliver --dry-run` -> 6 pendentes (3 jogos x 2 chats), sem
-  rede e sem escrever em `sent`.
-- `python app.py deliver --only privado --limit 1` ->
-  `[ok] privado 555080 Corinthians x Botafogo FR -> message_id=8`.
-  Uma segunda execução com os mesmos argumentos entregou o próximo da fila
-  (`555084 Gremio x EC Bahia -> message_id=9`), porque ainda havia 3 jogos
-  devidos e `--limit 1` limita por execução, não por jogo. O `555080` não foi
-  repetido (dedupe confirmado). O `555099` continua pendente em `privado`.
-- `canal` continua **sem entregas** de resultados: reservado para o
-  Corinthians x Gremio de 29/11.
-- `python -m pytest tests -q` -> **99 passed**, zero rede.
-- Git inicializado (`main`), sem commit e sem identidade configurada.
+  `config/chats.yaml` (gitignored): canal do Telegram + conversa privada.
+  Em CI o ficheiro é gerado a partir dos secrets `TELEGRAM_CHAT_CANAL` e
+  `TELEGRAM_CHAT_PRIVADO`.
+- **Fase 5 executada a 2026-11-27.** Repositório público
+  `github.com/joelfetzner/football-bot`, branch `main`, tag `v0.5.0`.
+  Actions gratuitas e ilimitadas (repo público); budgets do GitHub em $0.
+  - `sync.yml` (05:13 UTC): calendário de hoje..+7 dias, 1 pedido.
+  - `check.yml` (`*/5 21-23,0-5 * * *`): gate local, rede só se houver jogo.
+  - `test-send.yml` (manual): `only`, `limit`, `dry_run`; não commita o banco.
+  - `data/football.db` só é commitado quando muda (mtime/SHA verificados).
+- **Entregas reais feitas:** 3 jogos no canal (rondas 35 e 36) e 1 no privado.
+  O canal foi limpo e reenviado a 27/11 depois de adicionar subscritores.
+- `python app.py check` -> `[ok] check: nada na janela (1 jogos futuros no
+  banco)`, exit 0, sem rede e sem tocar no banco.
+- `python -m pytest tests -q` -> **112 passed**, zero rede.
+- `git status` limpo; sem pendências locais.
 
 ## 5. Bloqueios
 
@@ -163,18 +165,20 @@ Fase 5  app.py check + .github/workflows -> Actions (gate local + cron 5 min)
 - Cobertura confirmada no free tier: **13 competições**, com `BSA` e `CLI`.
   **Copa do Brasil e campeonatos estaduais não existem** nesse plano.
 
-## 6. Próximo passo (Fase 5)
+## 6. Próximo passo
 
-1. Agendamento (GitHub Actions ou tarefa local): `sync` seguido de
-   `deliver`, por exemplo a cada 15-30 min, com `TELEGRAM_BOT_TOKEN` como
-   segredo do runner. O `sync` gasta 2 pedidos por execução com a janela
-   default.
-2. Rotina dedicada ao dia de jogo: o Corinthians x Gremio de 29/11 21:30 UTC
-   entra em `due` quando o `sync` o vir `FINISHED`; o `canal` recebe então a
-   primeira entrega real.
-3. `parse_mode`/`content: results_and_scorers` só se forem precisos marcadores
-   ou golos; a Fase 4 entrega texto simples ASCII.
-4. Rever `docs/coverage.md` e aliases de competição quando a janela mudar.
+1. **29/11 21:30 UTC — Corinthians x Gremio (ronda 37).** Primeira entrega
+   automática real. O gate libera a checagem às 23:45 UTC (apito + 120 min de
+   margem + 15 de folga). Esperado: 1 mensagem no canal e 1 no privado,
+   entre 23:45 e 00:15 UTC.
+2. Verificar no dia seguinte: `gh run list --workflow=check.yml --limit 10` e
+   o log do run das 23:45.
+3. Se não chegar nada: ver runbook na secção 10.
+4. **Futuro (não iniciado):** competições europeias. `PL`, `PD`, `SA`, `BL1`,
+   `FL1`, `CL`, `ELC`, `PPL` estão no free tier e cabem no mesmo pedido
+   (`?competitions=BSA,CLI,PL,...`). Requer margem por código (`CL` = 165 min)
+   e cron 24h (`*/5 * * * *`), que num repo público custa $0. Com 8 competições,
+   avaliar digest diário em vez de mensagem por jogo.
 
 ## 7. Arquivos relevantes
 
@@ -274,3 +278,43 @@ requirements.txt        PyYAML>=6.0 (só config)
 - Confirmar no Actions que o commit automático da DB aparece uma única vez por
   alteração e que os runs "nada na janela" terminam verdes sem commit.
 - Só depois disso considerar `parse_mode`/`content: results_and_scorers`.
+
+## 10. Fecho de 2026-11-27 - operacao, privacidade e exposicao
+
+### Runbook
+
+- Ver execucoes: `gh run list --workflow=check.yml --limit 10`
+- Forcar sincronizacao: `gh workflow run sync.yml`
+- Envio manual: `gh workflow run test-send.yml -f only=privado -f limit=1 -f dry_run=false`
+- Checagem local sem rede: `python app.py check`
+- Quem esta na fila: `python app.py deliver --dry-run`
+- Reverter codigo: `git revert <sha>` + push. O banco nao volta atras:
+  `sent` e append-only de proposito (apagar linha = reenvio futuro).
+
+### Se uma noite nao chegar mensagem (ordem de investigacao)
+
+1. O cron rodou? `gh run list --workflow=check.yml` (janela 21-23 e 0-5 UTC).
+2. O log diz `nada na janela` (gate ainda nao liberou) ou erro de API?
+3. O jogo esta `FINISHED` no banco? `python app.py due` local.
+4. Jogo adiado nao gera erro: fica fora do gate e entra quando for jogado.
+
+### Privacidade
+
+- **Publico:** codigo, testes, `docs/`, `config/teams.yaml` e
+  `data/football.db` (que contem os chat_id na tabela `sent` - estado do
+  dedupe, nao credencial).
+- **Privado:** `.env` (token do bot + chave da API) e `config/chats.yaml`
+  (IDs reais). Ambos no `.gitignore`; em CI os IDs vem dos secrets.
+- **Secret scanning + push protection**: ativos no GitHub.
+- **Commits**: os primeiros usam o email pessoal; a partir de 27/11 o repo
+  local usa `360575301+joelfetzner@users.noreply.github.com`.
+- **Perfil**: o email do perfil esta `null` (nao publico). O login/avatar e a
+  atividade publica sao visiveis, como em qualquer conta GitHub.
+
+### Limites conhecidos
+
+- Free tier football-data.org: 13 competicoes, 10 pedidos/min, janela maxima
+  de 10 dias por pedido. Sem Copa do Brasil nem estaduais.
+- Cron do GitHub atrasa 5-15 min sob carga; a entrega e "apos o apito", nao
+  "ao vivo".
+- Mensagem por jogo nao tem botao: o canal e somente leitura.
