@@ -20,7 +20,7 @@ a mensagem em modo *dry-run*. A **Fase 4** (feita em 2026-11-27) liga essa fila
 aos destinos de `config/chats.yaml` pela Bot API, gravando `sent` só depois de
 um envio com sucesso. A **Fase 5** (feita em 2026-11-27) põe o ciclo a correr
 no GitHub Actions: um gate local sem rede decide quando chamar a API, o cron
-corre de 5 em 5 minutos apenas na janela de jogos e o `data/football.db` só é
+corre de 5 em 5 minutos 24 horas por dia e o `data/football.db` só é
 commitado quando muda.
 
 ```
@@ -148,7 +148,7 @@ Fase 5  app.py check + .github/workflows -> Actions (gate local + cron 5 min)
   `github.com/joelfetzner/football-bot`, branch `main`, tag `v0.5.0`.
   Actions gratuitas e ilimitadas (repo público); budgets do GitHub em $0.
   - `sync.yml` (05:13 UTC): calendário de hoje..+7 dias, 1 pedido.
-  - `check.yml` (`*/5 21-23,0-5 * * *`): gate local, rede só se houver jogo.
+  - `check.yml` (`*/5 * * * *`): gate local, rede só se houver jogo.
   - `test-send.yml` (manual): `only`, `limit`, `dry_run`; não commita o banco.
   - `data/football.db` só é commitado quando muda (mtime/SHA verificados).
 - **Entregas reais feitas:** 3 jogos no canal (rondas 35 e 36) e 1 no privado.
@@ -245,7 +245,7 @@ requirements.txt        PyYAML>=6.0 (só config)
   `status`, golos, penalties ou `venue`. `sync` imprime agora
   `[ok] sync: N jogos (X finalizados, Y agendados, Z alterados)`.
 - **Workflows** em `.github/workflows/`:
-  - `check.yml`: cron `*/5 21-23,0-5 * * *` (UTC) + `workflow_dispatch`,
+  - `check.yml`: cron `*/5 * * * *` (UTC) + `workflow_dispatch`,
     `contents: write`, concorrência `football-state` sem cancelamento,
     `timeout-minutes: 5`; gera `config/chats.yaml` a partir dos secrets e
     commita `data/football.db` apenas se `git diff --quiet` falhar.
@@ -261,7 +261,7 @@ requirements.txt        PyYAML>=6.0 (só config)
 ### Decisões
 
 - Repositório **público**: minutos de Actions grátis, por isso o cron pode ser
-  de 5 em 5 minutos dentro da janela de jogos.
+  de 5 em 5 minutos 24 horas por dia.
 - **Gate kickoff + margem + grace** em vez de sondar a API a cada 5 minutos:
   poupa quota do free tier (10 pedidos/min) e evita resultados provisórios.
 - **DB commitada só quando muda**: o passo de commit compara
@@ -293,7 +293,7 @@ requirements.txt        PyYAML>=6.0 (só config)
 
 ### Se uma noite nao chegar mensagem (ordem de investigacao)
 
-1. O cron rodou? `gh run list --workflow=check.yml` (janela 21-23 e 0-5 UTC).
+1. O cron rodou? `gh run list --workflow=check.yml` (roda 24h, de 5 em 5 minutos).
 2. O log diz `nada na janela` (gate ainda nao liberou) ou erro de API?
 3. O jogo esta `FINISHED` no banco? `python app.py due` local.
 4. Jogo adiado nao gera erro: fica fora do gate e entra quando for jogado.

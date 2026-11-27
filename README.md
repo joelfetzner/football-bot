@@ -173,7 +173,7 @@ O agendamento vive em `.github/workflows/` (repo publico = Actions gratis):
 
 | workflow | quando | o que faz |
 | --- | --- | --- |
-| `check.yml` | cron `*/5 21-23,0-5 * * *` (UTC) + manual | gate local, sync de 3 dias e entrega |
+| `check.yml` | cron `*/5 * * * *` (UTC) + manual | gate local, sync de 3 dias e entrega |
 | `sync.yml` | cron `13 5 * * *` + manual | `sync --days-back 0 --days-forward 7` |
 | `test-send.yml` | manual | `deliver` de teste (`canal`, `privado` ou `all`) |
 
